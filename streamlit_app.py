@@ -39,7 +39,7 @@ st.markdown("""
 [data-testid="stImage"] {margin:0 !important;}
 [data-testid="stImage"] img {width:100% !important; height:180px !important; object-fit:cover !important; border-radius:10px !important; background:#e8efeb;}
 .card-placeholder {height:180px; border-radius:10px; background:#e8efeb; color:#60756c; display:flex; align-items:center; justify-content:center; margin-bottom:.35rem;}
-.plant-card {padding:2px 1px 0 1px; background:#fff; min-height:155px;}
+.plant-card {padding:2px 1px 0 1px; background:#fff; height:155px; overflow:hidden;}
 .plant-card h3 {margin:0 0 2px 0; color:#214f43; font-size:1.05rem; line-height:1.25; min-height:2.62rem; max-height:2.62rem; overflow:hidden;}
 .scientific {font-style:italic; color:#5d7068; margin-bottom:8px; min-height:2.5rem; max-height:2.5rem; overflow:hidden; line-height:1.2;}
 .badge {display:inline-block; background:#e5f0ea; color:#285e50; border-radius:999px; padding:2px 8px; margin:2px 4px 2px 0; font-size:.78rem;}
@@ -239,7 +239,7 @@ def plant_dialog(plant_id: int):
 
 
 def render_card(row: dict, key_prefix: str):
-    with st.container(border=True, height=445):
+    with st.container(border=True, key=f"card_{key_prefix}_{row.get('id')}"):
         image = locate_image(row.get("main_image"))
         if image:
             st.image(str(image), use_container_width=True)
