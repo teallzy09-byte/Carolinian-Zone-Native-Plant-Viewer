@@ -34,9 +34,14 @@ st.markdown("""
 <style>
 .block-container {padding-top: 1.5rem; padding-bottom: 3rem;}
 [data-testid="stSidebar"] {min-width: 285px;}
-.plant-card {border:1px solid #cbd8d1; border-radius:14px; padding:14px; background:#fff; min-height:175px; margin-bottom:12px; box-shadow:0 2px 8px rgba(28,63,52,.06)}
-.plant-card h3 {margin:0 0 2px 0; color:#214f43; font-size:1.12rem;}
-.scientific {font-style:italic; color:#5d7068; margin-bottom:8px;}
+.block-container {max-width: 1500px;}
+[data-testid="stVerticalBlockBorderWrapper"] {background:#fff; border-color:#cbd8d1 !important; border-radius:14px !important; box-shadow:0 2px 8px rgba(28,63,52,.07);}
+[data-testid="stImage"] {margin:0 !important;}
+[data-testid="stImage"] img {width:100% !important; height:180px !important; object-fit:cover !important; border-radius:10px !important; background:#e8efeb;}
+.card-placeholder {height:180px; border-radius:10px; background:#e8efeb; color:#60756c; display:flex; align-items:center; justify-content:center; margin-bottom:.35rem;}
+.plant-card {padding:2px 1px 0 1px; background:#fff; min-height:155px;}
+.plant-card h3 {margin:0 0 2px 0; color:#214f43; font-size:1.05rem; line-height:1.25; min-height:2.62rem; max-height:2.62rem; overflow:hidden;}
+.scientific {font-style:italic; color:#5d7068; margin-bottom:8px; min-height:2.5rem; max-height:2.5rem; overflow:hidden; line-height:1.2;}
 .badge {display:inline-block; background:#e5f0ea; color:#285e50; border-radius:999px; padding:2px 8px; margin:2px 4px 2px 0; font-size:.78rem;}
 .detail-section {border:1px solid #d5e0da; border-radius:12px; padding:12px; margin:8px 0; background:#fff;}
 .bloom-card {border:1px solid #c8d8d0; border-radius:10px; padding:10px 12px; margin:7px 0; background:#f7faf8;}
@@ -234,19 +239,39 @@ def plant_dialog(plant_id: int):
 
 
 def render_card(row: dict, key_prefix: str):
-    image = locate_image(row.get("main_image"))
-    if image: st.image(str(image), use_container_width=True)
-    st.markdown(f'<div class="plant-card"><h3>{html.escape(row.get("common_name") or "No common name")}</h3><div class="scientific">{html.escape(row.get("scientific_name") or "")}</div>{chips([row.get("major_growth_group") or "Unclassified"])}{line("Family", family_name(row))}{line("Light", row.get("preferred_light"))}{line("Water", row.get("preferred_water"))}</div>', unsafe_allow_html=True)
-    if st.button("View details", key=f"{key_prefix}_{row.get('id')}", use_container_width=True):
-        plant_dialog(int(row["id"]))
+    with st.container(border=True, height=445):
+        image = locate_image(row.get("main_image"))
+        if image:
+            st.image(str(image), use_container_width=True)
+        else:
+            st.markdown('<div class="card-placeholder">No image</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="plant-card">'
+            f'<h3>{html.escape(row.get("common_name") or "No common name")}</h3>'
+            f'<div class="scientific">{html.escape(row.get("scientific_name") or "")}</div>'
+            f'{chips([row.get("major_growth_group") or "Unclassified"])}'
+            f'{line("Family", family_name(row))}'
+            f'{line("Light", row.get("preferred_light"))}'
+            f'{line("Water", row.get("preferred_water"))}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("View details", key=f"{key_prefix}_{row.get('id')}", use_container_width=True):
+            plant_dialog(int(row["id"]))
 
 
 def render_grid(rows: list[dict], prefix: str):
-    if not rows: return
-    columns = st.columns(3)
-    for index, row in enumerate(rows):
-        with columns[index % 3]: render_card(row, prefix)
-
+    if not rows:
+        return
+    # Build explicit rows instead of continuously feeding columns. This keeps every
+    # card aligned with its row and prevents a masonry-style layout.
+    cards_per_row = 4
+    for row_start in range(0, len(rows), cards_per_row):
+        card_columns = st.columns(cards_per_row, gap="medium")
+        batch = rows[row_start:row_start + cards_per_row]
+        for index, row in enumerate(batch):
+            with card_columns[index]:
+                render_card(row, prefix)
 
 def paginate(rows: list[dict], key: str) -> list[dict]:
     page_size = st.selectbox("Plants per page", [24, 48, 96], index=0, key=f"size_{key}")
@@ -328,12 +353,14 @@ elif view == "Type View":
         for secondary in display_secondary(row): groups.setdefault(major_name, {}).setdefault(secondary, []).append(row)
     ordered = MAJOR_ORDER + sorted(set(groups) - set(MAJOR_ORDER), key=str.casefold)
     for major_name in ordered:
-        if major_name not in groups: continue
+        if major_name not in groups:
+            continue
         count = len({row["id"] for subgroup in groups[major_name].values() for row in subgroup})
-        with st.expander(f"{major_name} ({count:,})", expanded=search_active):
-            for secondary in sorted(groups[major_name], key=str.casefold):
-                st.markdown(f"#### {secondary} ({len(groups[major_name][secondary]):,})")
-                render_grid(sorted(groups[major_name][secondary], key=scientific_sort), f"type_{major_name}_{secondary}")
+        st.markdown(f"### {major_name} ({count:,})")
+        for secondary in sorted(groups[major_name], key=str.casefold):
+            secondary_rows = sorted(groups[major_name][secondary], key=scientific_sort)
+            with st.expander(f"{secondary} ({len(secondary_rows):,})", expanded=search_active):
+                render_grid(secondary_rows, f"type_{major_name}_{secondary}")
 else:
     common = view == "Alphabetical - Common"
     groups = {}
