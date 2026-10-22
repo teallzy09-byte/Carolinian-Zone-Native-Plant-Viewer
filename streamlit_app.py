@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import base64
 import html
 import json
+import mimetypes
 import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 APP_DIR = Path(__file__).resolve().parent
 DATABASE_CANDIDATES = [
@@ -45,8 +48,6 @@ st.markdown("""
 .badge {display:inline-block; background:#e5f0ea; color:#285e50; border-radius:999px; padding:2px 8px; margin:2px 4px 2px 0; font-size:.78rem;}
 .detail-section {border:1px solid #d5e0da; border-radius:12px; padding:12px; margin:8px 0; background:#fff;}
 .bloom-card {border:1px solid #c8d8d0; border-radius:10px; padding:10px 12px; margin:7px 0; background:#f7faf8;}
-.carousel-note {color:#60756c; font-size:.86rem; text-align:center; margin-top:-4px; margin-bottom:10px;}
-.carousel-count {text-align:center; color:#49645a; font-weight:600; margin-bottom:4px;}
 
 
 .muted {color:#687a72;}
@@ -81,6 +82,12 @@ def locate_image(name: str | None) -> Path | None:
         if path.is_file():
             return path
     return None
+
+
+def image_data_uri(path: Path) -> str:
+    mime=mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    encoded=base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
 
 
 
@@ -189,28 +196,33 @@ def bloom_section(periods: list[dict]):
 
 
 def render_detail(row: dict):
-    images = [locate_image(name) for name in row.get("images", [])]
-    images = [path for path in images if path]
+    images=[locate_image(name) for name in row.get("images", [])]
+    images=[path for path in images if path]
     if images:
-        carousel_key = f"carousel_index_{row.get('id')}"
-        if carousel_key not in st.session_state:
-            st.session_state[carousel_key] = 0
-        st.session_state[carousel_key] %= len(images)
-
-        left, centre, right = st.columns([1, 8, 1], vertical_alignment="center")
-        with left:
-            if st.button("◀", key=f"carousel_prev_{row.get('id')}", help="Previous photo", use_container_width=True):
-                st.session_state[carousel_key] = (st.session_state[carousel_key] - 1) % len(images)
-                st.rerun()
-        with centre:
-            current_image = images[st.session_state[carousel_key]]
-            st.markdown(f'<div class="carousel-count">Photo {st.session_state[carousel_key] + 1} of {len(images)}</div>', unsafe_allow_html=True)
-            st.image(str(current_image), use_container_width=True)
-            st.markdown('<div class="carousel-note">Use the arrows to browse. Click the expand icon on the image to view it larger.</div>', unsafe_allow_html=True)
-        with right:
-            if st.button("▶", key=f"carousel_next_{row.get('id')}", help="Next photo", use_container_width=True):
-                st.session_state[carousel_key] = (st.session_state[carousel_key] + 1) % len(images)
-                st.rerun()
+        uris=[image_data_uri(path) for path in images[:12]]
+        slides=json.dumps(uris)
+        carousel_html=f"""
+<!doctype html><html><head><meta charset='utf-8'><style>
+*{{box-sizing:border-box}} body{{margin:0;background:transparent;font-family:Arial,sans-serif}}
+.carousel{{width:100%;max-width:980px;margin:0 auto;text-align:center}}
+.stage{{position:relative;width:100%;height:680px;display:flex;align-items:center;justify-content:center;background:#eef3f0;border:1px solid #c8d8d0;border-radius:14px;overflow:hidden}}
+.main{{display:block;max-width:100%;max-height:680px;width:auto;height:auto;object-fit:contain;margin:auto;cursor:zoom-in}}
+.arrow{{position:absolute;top:50%;transform:translateY(-50%);width:34px;height:34px;padding:0;border:1px solid #9db3a8;border-radius:50%;background:rgba(255,255,255,.9);color:#214f43;font-size:17px;line-height:30px;cursor:pointer;box-shadow:0 1px 5px rgba(0,0,0,.16)}}
+.arrow:hover{{background:#fff;border-color:#2f6b5b}} .prev{{left:12px}} .next{{right:12px}}
+.counter{{font-size:13px;color:#49645a;font-weight:600;margin:7px 0}}
+.thumbs{{display:flex;gap:8px;justify-content:center;overflow-x:auto;padding:4px 2px 8px}}
+.thumb{{flex:0 0 auto;width:92px;height:68px;padding:0;border:2px solid transparent;border-radius:8px;background:#e8efeb;overflow:hidden;cursor:pointer}}
+.thumb img{{width:100%;height:100%;object-fit:cover;display:block}} .thumb.active{{border-color:#2f6b5b;box-shadow:0 0 0 1px #2f6b5b}}
+@media(max-width:760px){{.stage{{height:480px}}.main{{max-height:480px}}.arrow{{width:30px;height:30px;font-size:15px}}.thumb{{width:76px;height:56px}}}}
+</style></head><body><div class='carousel'><div class='stage'><img id='main' class='main'><button class='arrow prev' aria-label='Previous photo' onclick='move(-1)'>&#10094;</button><button class='arrow next' aria-label='Next photo' onclick='move(1)'>&#10095;</button></div><div id='counter' class='counter'></div><div id='thumbs' class='thumbs'></div></div>
+<script>
+const slides={slides};let current=0;const main=document.getElementById('main'),thumbs=document.getElementById('thumbs'),counter=document.getElementById('counter');
+function show(i){{current=(i+slides.length)%slides.length;main.src=slides[current];counter.textContent=(current+1)+' / '+slides.length;[...thumbs.children].forEach((x,n)=>x.classList.toggle('active',n===current));}}
+function move(d){{show(current+d)}}
+main.onclick=()=>window.open(slides[current],'_blank','noopener');
+slides.forEach((src,i)=>{{const b=document.createElement('button');b.className='thumb';b.setAttribute('aria-label','Show photo '+(i+1));b.onclick=()=>show(i);const im=document.createElement('img');im.src=src;im.alt='Photo '+(i+1);b.appendChild(im);thumbs.appendChild(b);}});show(0);
+</script></body></html>"""
+        components.html(carousel_html,height=790,scrolling=False)
     st.subheader(row.get("common_name") or "No common name")
     st.markdown(f"*{html.escape(row.get('scientific_name') or '')}*")
     st.markdown(chips([row.get("major_growth_group") or "Unclassified"] + display_secondary(row)), unsafe_allow_html=True)
