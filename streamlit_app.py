@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import base64
 import html
 import json
-import mimetypes
 import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
@@ -47,11 +45,9 @@ st.markdown("""
 .badge {display:inline-block; background:#e5f0ea; color:#285e50; border-radius:999px; padding:2px 8px; margin:2px 4px 2px 0; font-size:.78rem;}
 .detail-section {border:1px solid #d5e0da; border-radius:12px; padding:12px; margin:8px 0; background:#fff;}
 .bloom-card {border:1px solid #c8d8d0; border-radius:10px; padding:10px 12px; margin:7px 0; background:#f7faf8;}
-.detail-gallery {display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin:4px 0 18px 0;}
-.detail-gallery a {display:block; border:1px solid #c8d8d0; border-radius:12px; overflow:hidden; background:#e8efeb; box-shadow:0 2px 8px rgba(28,63,52,.08);}
-.detail-gallery img {display:block; width:100%; height:340px; object-fit:contain; background:#e8efeb; cursor:zoom-in;}
-.detail-image-note {color:#60756c; font-size:.86rem; margin-top:-8px; margin-bottom:14px;}
-@media (max-width:760px) {.detail-gallery {grid-template-columns:1fr;} .detail-gallery img {height:300px;}}
+.carousel-note {color:#60756c; font-size:.86rem; text-align:center; margin-top:-4px; margin-bottom:10px;}
+.carousel-count {text-align:center; color:#49645a; font-weight:600; margin-bottom:4px;}
+
 
 .muted {color:#687a72;}
 </style>
@@ -86,11 +82,6 @@ def locate_image(name: str | None) -> Path | None:
             return path
     return None
 
-
-def image_data_uri(path: Path) -> str:
-    mime = mimetypes.guess_type(path.name)[0] or "image/jpeg"
-    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-    return f"data:{mime};base64,{encoded}"
 
 
 @st.cache_data(show_spinner=False)
@@ -201,16 +192,25 @@ def render_detail(row: dict):
     images = [locate_image(name) for name in row.get("images", [])]
     images = [path for path in images if path]
     if images:
-        gallery_items = []
-        for image_path in images[:8]:
-            uri = image_data_uri(image_path)
-            label = html.escape(image_path.stem.replace("_", " "))
-            gallery_items.append(
-                f'<a href="{uri}" target="_blank" rel="noopener" title="Open image by itself">'
-                f'<img src="{uri}" alt="{label}" loading="lazy"></a>'
-            )
-        st.markdown('<div class="detail-gallery">' + ''.join(gallery_items) + '</div>', unsafe_allow_html=True)
-        st.markdown('<div class="detail-image-note">Click any photo to open the image by itself in a new browser tab.</div>', unsafe_allow_html=True)
+        carousel_key = f"carousel_index_{row.get('id')}"
+        if carousel_key not in st.session_state:
+            st.session_state[carousel_key] = 0
+        st.session_state[carousel_key] %= len(images)
+
+        left, centre, right = st.columns([1, 8, 1], vertical_alignment="center")
+        with left:
+            if st.button("◀", key=f"carousel_prev_{row.get('id')}", help="Previous photo", use_container_width=True):
+                st.session_state[carousel_key] = (st.session_state[carousel_key] - 1) % len(images)
+                st.rerun()
+        with centre:
+            current_image = images[st.session_state[carousel_key]]
+            st.markdown(f'<div class="carousel-count">Photo {st.session_state[carousel_key] + 1} of {len(images)}</div>', unsafe_allow_html=True)
+            st.image(str(current_image), use_container_width=True)
+            st.markdown('<div class="carousel-note">Use the arrows to browse. Click the expand icon on the image to view it larger.</div>', unsafe_allow_html=True)
+        with right:
+            if st.button("▶", key=f"carousel_next_{row.get('id')}", help="Next photo", use_container_width=True):
+                st.session_state[carousel_key] = (st.session_state[carousel_key] + 1) % len(images)
+                st.rerun()
     st.subheader(row.get("common_name") or "No common name")
     st.markdown(f"*{html.escape(row.get('scientific_name') or '')}*")
     st.markdown(chips([row.get("major_growth_group") or "Unclassified"] + display_secondary(row)), unsafe_allow_html=True)
