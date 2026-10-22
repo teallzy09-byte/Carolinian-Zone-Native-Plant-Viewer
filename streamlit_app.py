@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import html
 import json
+import mimetypes
 import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
@@ -45,6 +47,12 @@ st.markdown("""
 .badge {display:inline-block; background:#e5f0ea; color:#285e50; border-radius:999px; padding:2px 8px; margin:2px 4px 2px 0; font-size:.78rem;}
 .detail-section {border:1px solid #d5e0da; border-radius:12px; padding:12px; margin:8px 0; background:#fff;}
 .bloom-card {border:1px solid #c8d8d0; border-radius:10px; padding:10px 12px; margin:7px 0; background:#f7faf8;}
+.detail-gallery {display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin:4px 0 18px 0;}
+.detail-gallery a {display:block; border:1px solid #c8d8d0; border-radius:12px; overflow:hidden; background:#e8efeb; box-shadow:0 2px 8px rgba(28,63,52,.08);}
+.detail-gallery img {display:block; width:100%; height:340px; object-fit:contain; background:#e8efeb; cursor:zoom-in;}
+.detail-image-note {color:#60756c; font-size:.86rem; margin-top:-8px; margin-bottom:14px;}
+@media (max-width:760px) {.detail-gallery {grid-template-columns:1fr;} .detail-gallery img {height:300px;}}
+
 .muted {color:#687a72;}
 </style>
 """, unsafe_allow_html=True)
@@ -77,6 +85,12 @@ def locate_image(name: str | None) -> Path | None:
         if path.is_file():
             return path
     return None
+
+
+def image_data_uri(path: Path) -> str:
+    mime = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
 
 
 @st.cache_data(show_spinner=False)
@@ -187,7 +201,16 @@ def render_detail(row: dict):
     images = [locate_image(name) for name in row.get("images", [])]
     images = [path for path in images if path]
     if images:
-        st.image([str(path) for path in images[:8]], width=260)
+        gallery_items = []
+        for image_path in images[:8]:
+            uri = image_data_uri(image_path)
+            label = html.escape(image_path.stem.replace("_", " "))
+            gallery_items.append(
+                f'<a href="{uri}" target="_blank" rel="noopener" title="Open image by itself">'
+                f'<img src="{uri}" alt="{label}" loading="lazy"></a>'
+            )
+        st.markdown('<div class="detail-gallery">' + ''.join(gallery_items) + '</div>', unsafe_allow_html=True)
+        st.markdown('<div class="detail-image-note">Click any photo to open the image by itself in a new browser tab.</div>', unsafe_allow_html=True)
     st.subheader(row.get("common_name") or "No common name")
     st.markdown(f"*{html.escape(row.get('scientific_name') or '')}*")
     st.markdown(chips([row.get("major_growth_group") or "Unclassified"] + display_secondary(row)), unsafe_allow_html=True)
