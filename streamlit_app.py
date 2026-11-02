@@ -147,10 +147,25 @@ def scientific_sort(row: dict):
 def measure(low, high) -> str:
     if low is None and high is None:
         return "Not specified"
-    if low is None: return f"Up to {high:g} cm"
-    if high is None: return f"From {low:g} cm"
-    if low == high: return f"{low:g} cm"
-    return f"{low:g}–{high:g} cm"
+
+    unit=globals().get("display_unit","cm")
+    def convert(value):
+        if value is None:return None
+        value=float(value)
+        if unit=="m":return value/100.0
+        if unit=="in":return value/2.54
+        return value
+    def format_value(value):
+        if value is None:return None
+        if unit=="cm":return str(int(round(value)))
+        return (f"{value:.2f}").rstrip("0").rstrip(".")
+
+    low_value,high_value=convert(low),convert(high)
+    suffix={"cm":"cm","m":"m","in":"in"}[unit]
+    if low_value is None:return f"Up to {format_value(high_value)} {suffix}"
+    if high_value is None:return f"From {format_value(low_value)} {suffix}"
+    if abs(low_value-high_value)<1e-12:return f"{format_value(low_value)} {suffix}"
+    return f"{format_value(low_value)}–{format_value(high_value)} {suffix}"
 
 
 def month_ranges(months: list[str]) -> str:
@@ -339,6 +354,7 @@ st.caption("Explore native plants of the Carolinian Zone by family, growth class
 
 with st.sidebar:
     st.header("Find Plants")
+    display_unit=st.radio("Display units",["cm","m","in"],horizontal=True,index=0)
     query = st.text_input("Search names, family, habitat, notes")
     view = st.radio("View", ["Family View", "Type View", "Alphabetical - Common", "Alphabetical - Scientific", "Full"], index=3)
     major = st.multiselect("Major Growth Group", text_values(rows, "major_growth_group"))
